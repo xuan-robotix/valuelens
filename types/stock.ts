@@ -66,6 +66,13 @@ export interface DisplayMetric {
   help: string;
 }
 
+/** One year of historical valuation ratios, for the trend chart. */
+export interface ValuationHistoryPoint {
+  year: string;
+  peRatio: number | null;
+  psRatio: number | null;
+}
+
 export type MetricGroupKey = "valuation" | "growth" | "profitability";
 
 export interface MetricGroup {

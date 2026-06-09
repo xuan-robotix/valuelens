@@ -4,12 +4,15 @@ import {
   getStockData,
   sanitizeTicker,
   TickerNotFoundError,
+  LiveDataUnavailableError,
 } from "@/services/stockProvider";
+import { getValuationHistory } from "@/services/history";
 import { evaluate } from "@/lib/valuation/engine";
 import { buildMetricGroups } from "@/lib/presentMetrics";
 import { CompanyHeader } from "@/components/dashboard/CompanyHeader";
 import { VerdictCard } from "@/components/dashboard/VerdictCard";
 import { MetricGroup } from "@/components/dashboard/MetricGroup";
+import { ValuationTrend } from "@/components/dashboard/ValuationTrend";
 import { ScoreBreakdown } from "@/components/dashboard/ScoreBreakdown";
 import {
   PeerComparison,
@@ -53,6 +56,22 @@ export default async function StockPage({ params }: Params) {
   try {
     data = await getStockData(ticker);
   } catch (err) {
+    if (err instanceof LiveDataUnavailableError) {
+      return (
+        <ErrorState
+          title={
+            err.reason === "rate_limit"
+              ? "Live data limit reached"
+              : "Live data unavailable"
+          }
+          message={
+            err.reason === "rate_limit"
+              ? "We've hit today's free-tier limit for market data. ValueLens won't show made-up numbers, so there's nothing to display right now — please try again later."
+              : "We couldn't reach the market-data provider just now. Rather than show stale or fake figures, we're holding off — please try again shortly."
+          }
+        />
+      );
+    }
     const message =
       err instanceof TickerNotFoundError
         ? `We couldn't find fundamentals for "${ticker}". Check the symbol and try again.`
@@ -78,6 +97,9 @@ export default async function StockPage({ params }: Params) {
   // If essentially nothing could be scored, don't show a misleading verdict.
   const scoredCategories = valuation.categories.filter((c) => c.score != null);
   const hasUsableData = scoredCategories.length > 0;
+
+  // Phase 4: historical valuation trend (live-only; null in demo mode).
+  const history = hasUsableData ? await getValuationHistory(data.profile.ticker) : null;
 
   // Phase 3: sector peers → relative context on metrics + comparison table.
   const peers = hasUsableData ? await getPeers(data) : [];
@@ -142,6 +164,8 @@ export default async function StockPage({ params }: Params) {
             />
           ))}
         </div>
+
+        {history && <ValuationTrend points={history} />}
 
         {comparisonRows.length > 1 && (
           <PeerComparison rows={comparisonRows} sector={data.profile.sector} />

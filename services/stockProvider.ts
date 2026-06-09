@@ -4,17 +4,25 @@
  * Design notes:
  *  - Provider-agnostic: callers get a normalized StockData and never see FMP.
  *  - Key-safe: this runs server-side only; FMP_API_KEY never reaches the client.
- *  - Graceful: with no key (or on failure) it falls back to the bundled demo set,
- *    so the app always works. Swapping providers means editing only this file.
+ *  - Honest: demo data is served ONLY when no key is configured (and it's clearly
+ *    labeled in the UI). When a key IS set but live data fails (rate limit /
+ *    outage), we throw LiveDataUnavailableError rather than passing off sample
+ *    numbers as real.
  */
 
 import "server-only";
 import type { StockData } from "@/types/stock";
 import { normalizeFmp } from "./normalize";
 import { getDemoTicker } from "./demoData";
+import {
+  FMP_BASE,
+  fetchFmpJson,
+  LiveDataUnavailableError,
+} from "./fmpClient";
+import { registerFetch } from "./supabase/usage";
 
-// FMP "stable" API (the legacy /api/v3 endpoints were retired for new accounts).
-const FMP_BASE = "https://financialmodelingprep.com/stable";
+// Re-export so existing imports (the dashboard) keep working.
+export { LiveDataUnavailableError };
 
 export class TickerNotFoundError extends Error {
   constructor(ticker: string) {
@@ -31,31 +39,26 @@ export function sanitizeTicker(raw: string): string | null {
   return t;
 }
 
-// Fundamentals barely move intraday, and the free tier has a small daily quota,
-// so cache each upstream response for 6 hours.
-async function fetchJson(url: string): Promise<unknown> {
-  const res = await fetch(url, { next: { revalidate: 60 * 60 * 6 } });
-  if (!res.ok) throw new Error(`Upstream ${res.status}`);
-  return res.json();
-}
-
 function firstOf<T>(value: unknown): T | undefined {
   return Array.isArray(value) ? (value[0] as T) : (value as T | undefined);
 }
+
+type FmpProfile = { symbol?: string };
 
 async function fetchFromFmp(
   ticker: string,
   apiKey: string,
 ): Promise<StockData | null> {
+  await registerFetch(`stock:${ticker}`, 4); // 4 endpoints below
   const q = `symbol=${ticker}&apikey=${apiKey}`;
   const [profileRaw, ratiosRaw, keyMetricsRaw, growthRaw] = await Promise.all([
-    fetchJson(`${FMP_BASE}/profile?${q}`),
-    fetchJson(`${FMP_BASE}/ratios-ttm?${q}`),
-    fetchJson(`${FMP_BASE}/key-metrics-ttm?${q}`),
-    fetchJson(`${FMP_BASE}/financial-growth?${q}&limit=1`),
+    fetchFmpJson(`${FMP_BASE}/profile?${q}`),
+    fetchFmpJson(`${FMP_BASE}/ratios-ttm?${q}`),
+    fetchFmpJson(`${FMP_BASE}/key-metrics-ttm?${q}`),
+    fetchFmpJson(`${FMP_BASE}/financial-growth?${q}&limit=1`),
   ]);
 
-  // Unknown ticker → empty array; rate-limit/error → { "Error Message": ... }.
+  // Unknown ticker → empty array (not an error).
   const profile = firstOf<FmpProfile>(profileRaw);
   if (!profile || !profile.symbol) return null;
 
@@ -68,34 +71,27 @@ async function fetchFromFmp(
   );
 }
 
-type FmpProfile = { symbol?: string };
-
 /**
- * Primary entry point. Returns normalized StockData or throws
- * TickerNotFoundError. Falls back to demo data when no key is configured or the
- * live call fails for any reason.
+ * Primary entry point. Returns normalized StockData, or throws:
+ *  - TickerNotFoundError      — the symbol doesn't exist
+ *  - LiveDataUnavailableError — live data couldn't be reached (no fake fallback)
  */
 export async function getStockData(ticker: string): Promise<StockData> {
   const apiKey = process.env.FMP_API_KEY;
 
   if (apiKey) {
+    let live: StockData | null;
     try {
-      const live = await fetchFromFmp(ticker, apiKey);
-      if (live) return live;
-      // Live provider returned nothing — try demo before giving up.
-      const demo = getDemoTicker(ticker);
-      if (demo) return demo;
-      throw new TickerNotFoundError(ticker);
+      live = await fetchFromFmp(ticker, apiKey);
     } catch (err) {
-      if (err instanceof TickerNotFoundError) throw err;
-      // Network/upstream error: degrade to demo if we have it.
-      const demo = getDemoTicker(ticker);
-      if (demo) return demo;
-      throw new TickerNotFoundError(ticker);
+      if (err instanceof LiveDataUnavailableError) throw err;
+      throw new LiveDataUnavailableError("error");
     }
+    if (live) return live;
+    throw new TickerNotFoundError(ticker); // valid request, no such symbol
   }
 
-  // No key configured — demo mode.
+  // No key configured — keyless demo mode (the UI labels this clearly).
   const demo = getDemoTicker(ticker);
   if (demo) return demo;
   throw new TickerNotFoundError(ticker);

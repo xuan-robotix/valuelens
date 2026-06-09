@@ -10,7 +10,10 @@ export function Footer() {
           point for your own research, not a recommendation to buy or sell.
         </p>
         <p className="mt-3 text-xs">
-          © {new Date().getFullYear()} ValueLens · A lens, not a crystal ball.
+          © {new Date().getFullYear()} ValueLens · A lens, not a crystal ball. ·{" "}
+          <a href="/usage" className="hover:text-fg hover:underline">
+            Data usage
+          </a>
         </p>
       </div>
     </footer>

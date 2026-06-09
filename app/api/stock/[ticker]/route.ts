@@ -3,6 +3,7 @@ import {
   getStockData,
   sanitizeTicker,
   TickerNotFoundError,
+  LiveDataUnavailableError,
 } from "@/services/stockProvider";
 import { evaluate } from "@/lib/valuation/engine";
 
@@ -32,6 +33,17 @@ export async function GET(
   } catch (err) {
     if (err instanceof TickerNotFoundError) {
       return NextResponse.json({ error: err.message }, { status: 404 });
+    }
+    if (err instanceof LiveDataUnavailableError) {
+      return NextResponse.json(
+        {
+          error:
+            err.reason === "rate_limit"
+              ? "Live market data limit reached for today. Try again later."
+              : "Live market data is temporarily unavailable. Try again shortly.",
+        },
+        { status: 503 },
+      );
     }
     return NextResponse.json(
       { error: "Something went wrong fetching this stock. Please try again." },
