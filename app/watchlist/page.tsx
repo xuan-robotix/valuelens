@@ -15,6 +15,16 @@ export const metadata: Metadata = { title: "Watchlist — ValueLens" };
 // Always render per-request: this page depends on the signed-in user.
 export const dynamic = "force-dynamic";
 
+type Row = {
+  ticker: string;
+  name: string | null;
+  marketCap: number | null;
+  currency: string;
+  score: number | null;
+  verdict: VerdictKey | null;
+  available: boolean;
+};
+
 export default async function WatchlistPage() {
   const supabase = await createClient();
   const user = supabase ? (await supabase.auth.getUser()).data.user : null;
@@ -22,34 +32,39 @@ export default async function WatchlistPage() {
 
   const tickers = await listWatchlistTickers(supabase, user.id);
 
-  // Score each ticker. Failures are skipped rather than breaking the page.
-  const rows = (
-    await Promise.all(
-      tickers.map(async (ticker) => {
-        try {
-          const data = await getStockData(ticker);
-          const valuation = evaluate(data.fundamentals);
-          return {
-            ticker,
-            name: data.profile.name,
-            marketCap: data.profile.marketCap,
-            currency: data.profile.currency,
-            score: valuation.score,
-            verdict: valuation.verdict.key as VerdictKey,
-          };
-        } catch {
-          return null;
-        }
-      }),
-    )
-  ).filter(Boolean) as Array<{
-    ticker: string;
-    name: string;
-    marketCap: number | null;
-    currency: string;
-    score: number;
-    verdict: VerdictKey;
-  }>;
+  // IMPORTANT: never drop a ticker just because its data couldn't be fetched
+  // (e.g. rate limit) — the item is still saved, so always show it. A failed
+  // fetch just renders as "data unavailable".
+  const rows: Row[] = await Promise.all(
+    tickers.map(async (ticker): Promise<Row> => {
+      try {
+        // Lightweight: one fetch per ticker, absolute scoring (no peer lookups)
+        // to keep this list cheap on the API quota.
+        const data = await getStockData(ticker);
+        const valuation = evaluate(data.fundamentals);
+        const scorable = valuation.categories.some((c) => c.score != null);
+        return {
+          ticker,
+          name: data.profile.name,
+          marketCap: data.profile.marketCap,
+          currency: data.profile.currency,
+          score: scorable ? valuation.score : null,
+          verdict: scorable ? (valuation.verdict.key as VerdictKey) : null,
+          available: true,
+        };
+      } catch {
+        return {
+          ticker,
+          name: null,
+          marketCap: null,
+          currency: "USD",
+          score: null,
+          verdict: null,
+          available: false,
+        };
+      }
+    }),
+  );
 
   return (
     <div className="mx-auto w-full max-w-5xl px-4 py-8">
@@ -81,13 +96,23 @@ export default async function WatchlistPage() {
                 <div className="min-w-0">
                   <div className="flex items-center gap-2">
                     <span className="font-semibold">{r.ticker}</span>
-                    <span className="truncate text-sm text-muted">{r.name}</span>
+                    {r.name && (
+                      <span className="truncate text-sm text-muted">{r.name}</span>
+                    )}
                   </div>
                   <p className="mt-0.5 text-xs text-muted">
-                    Mkt Cap {formatMarketCap(r.marketCap, r.currency)}
+                    {r.available
+                      ? `Mkt Cap ${formatMarketCap(r.marketCap, r.currency)}`
+                      : "Data unavailable right now"}
                   </p>
                 </div>
-                <VerdictBadge verdict={r.verdict} score={r.score} />
+                {r.verdict ? (
+                  <VerdictBadge verdict={r.verdict} score={r.score ?? undefined} />
+                ) : (
+                  <span className="shrink-0 rounded-full bg-surface-2 px-2.5 py-1 text-xs font-medium text-muted">
+                    {r.available ? "Not scored" : "Unavailable"}
+                  </span>
+                )}
               </Card>
             </Link>
           ))}
