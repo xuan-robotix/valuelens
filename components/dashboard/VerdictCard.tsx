@@ -11,7 +11,7 @@ export function VerdictCard({ result }: { result: ValuationResult }) {
     <Card className={cn("p-6 ring-1", s.bg, s.border, s.ring)}>
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="max-w-xl">
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <span className={cn("h-2.5 w-2.5 rounded-full", s.dot)} />
             <span
               className={cn(
@@ -21,6 +21,11 @@ export function VerdictCard({ result }: { result: ValuationResult }) {
             >
               Valuation Verdict
             </span>
+            {result.sectorAdjusted && (
+              <span className="rounded-full border border-border bg-surface/70 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider text-muted">
+                Sector-adjusted
+              </span>
+            )}
           </div>
           <h2 className={cn("mt-1.5 text-3xl font-semibold tracking-tight", s.text)}>
             {result.verdict.label}

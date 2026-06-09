@@ -9,6 +9,7 @@ import {
   deleteSavedAnalysis,
 } from "@/services/supabase/queries";
 import { getStockData } from "@/services/stockProvider";
+import { getPeers } from "@/services/peers";
 import { evaluate } from "@/lib/valuation/engine";
 
 /**
@@ -45,8 +46,12 @@ export async function saveAnalysis(ticker: string): Promise<void> {
   if (!user) redirect(`/login?next=/stock/${ticker}`);
 
   // Re-fetch + re-score server-side rather than trusting client-sent numbers.
+  // Score sector-adjusted (same as the dashboard) for a consistent snapshot.
   const data = await getStockData(ticker);
-  const valuation = evaluate(data.fundamentals);
+  const peers = await getPeers(data);
+  const valuation = evaluate(data.fundamentals, {
+    peers: peers.map((p) => p.fundamentals),
+  });
 
   await insertSavedAnalysis(supabase, user.id, {
     ticker: data.profile.ticker,

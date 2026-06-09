@@ -79,7 +79,6 @@ export default async function StockPage({ params }: Params) {
     return <ErrorState title="No data to show" message={message} />;
   }
 
-  const valuation = evaluate(data.fundamentals);
   const groups = buildMetricGroups(data.fundamentals);
   const currency = data.profile.currency;
 
@@ -94,26 +93,37 @@ export default async function StockPage({ params }: Params) {
     if (user) watched = await isInWatchlist(supabase!, user.id, data.profile.ticker);
   }
 
-  // If essentially nothing could be scored, don't show a misleading verdict.
-  const scoredCategories = valuation.categories.filter((c) => c.score != null);
-  const hasUsableData = scoredCategories.length > 0;
+  // Base (absolute) score first — just to decide whether this stock is scorable.
+  const baseValuation = evaluate(data.fundamentals);
+  const hasUsableData = baseValuation.categories.some((c) => c.score != null);
 
   // Phase 4: historical valuation trend (live-only; null in demo mode).
   const history = hasUsableData ? await getValuationHistory(data.profile.ticker) : null;
 
-  // Phase 3: sector peers → relative context on metrics + comparison table.
+  // Phase 3/5: sector peers → relative context + sector-adjusted re-scoring.
   const peers = hasUsableData ? await getPeers(data) : [];
-  const medians = computeMedians([
-    data.fundamentals,
-    ...peers.map((p) => p.fundamentals),
-  ]);
+  const peerFundamentals = peers.map((p) => p.fundamentals);
+
+  // The headline verdict, now blended with sector-relative rank when peers exist.
+  const valuation =
+    peers.length > 0
+      ? evaluate(data.fundamentals, { peers: peerFundamentals })
+      : baseValuation;
+
+  const medians = computeMedians([data.fundamentals, ...peerFundamentals]);
   const contexts =
     peers.length > 0 ? buildContexts(data.fundamentals, medians) : undefined;
 
+  // Comparison rows: each member scored against the same sector group so the
+  // verdicts are consistent with the headline.
+  const group = [data, ...peers];
   const comparisonRows: PeerRow[] =
     peers.length > 0
-      ? [data, ...peers].map((s) => {
-          const v = evaluate(s.fundamentals);
+      ? group.map((s) => {
+          const others = group
+            .filter((g) => g !== s)
+            .map((g) => g.fundamentals);
+          const v = evaluate(s.fundamentals, { peers: others });
           return {
             ticker: s.profile.ticker,
             name: s.profile.name,

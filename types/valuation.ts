@@ -8,8 +8,12 @@ export interface MetricScore {
   key: string;
   label: string;
   value: number | null;
-  /** 0–10 sub-score, or null if the metric was excluded (missing/N/A). */
+  /** 0–10 sub-score (blended, if sector-adjusted), or null if excluded. */
   score: number | null;
+  /** Absolute-threshold sub-score (always present when scorable). */
+  absolute?: number | null;
+  /** Sector-relative percentile sub-score, when peers were available. */
+  relative?: number | null;
 }
 
 /** One scored category (e.g. Valuation), with its constituent metric scores. */
@@ -36,4 +40,6 @@ export interface ValuationResult {
   categories: CategoryScore[];
   /** Human-readable labels of metrics that were excluded from scoring. */
   excluded: string[];
+  /** True when scores blend absolute thresholds with sector-relative rank. */
+  sectorAdjusted: boolean;
 }

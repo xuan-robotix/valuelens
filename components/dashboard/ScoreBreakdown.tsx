@@ -37,6 +37,14 @@ export function ScoreBreakdown({ result }: { result: ValuationResult }) {
             Each category is scored 0–10 from its metrics, then combined by
             weight. Metrics that can&apos;t be computed are excluded and shown
             below.
+            {result.sectorAdjusted && (
+              <>
+                {" "}
+                Scores blend the <strong className="font-medium text-fg">absolute</strong>{" "}
+                threshold with a <strong className="font-medium text-fg">sector</strong>{" "}
+                percentile (shown as <em>abs · sector → blended</em>).
+              </>
+            )}
           </p>
 
           <div className="space-y-4">
@@ -61,7 +69,20 @@ export function ScoreBreakdown({ result }: { result: ValuationResult }) {
                     >
                       <span>{m.label}</span>
                       <span className="tabular-nums">
-                        {m.score != null ? `${m.score}/10` : "excluded"}
+                        {m.score == null ? (
+                          "excluded"
+                        ) : result.sectorAdjusted &&
+                          m.absolute != null &&
+                          m.relative != null ? (
+                          <>
+                            {m.absolute.toFixed(0)} · {m.relative.toFixed(0)} →{" "}
+                            <span className="font-medium text-fg">
+                              {m.score.toFixed(1)}
+                            </span>
+                          </>
+                        ) : (
+                          `${m.score.toFixed(1)}/10`
+                        )}
                       </span>
                     </div>
                   ))}
