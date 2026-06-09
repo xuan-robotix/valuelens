@@ -12,6 +12,7 @@ import { buildMetricGroups } from "@/lib/presentMetrics";
 import { CompanyHeader } from "@/components/dashboard/CompanyHeader";
 import { VerdictCard } from "@/components/dashboard/VerdictCard";
 import { MetricGroup } from "@/components/dashboard/MetricGroup";
+import { CompanyAbout } from "@/components/dashboard/CompanyAbout";
 import { ValuationTrend } from "@/components/dashboard/ValuationTrend";
 import { ScoreBreakdown } from "@/components/dashboard/ScoreBreakdown";
 import {
@@ -158,23 +159,27 @@ export default async function StockPage({ params }: Params) {
             <h2 className="text-lg font-semibold">Valuation unavailable</h2>
             <p className="mt-2 text-sm text-muted">
               We couldn&apos;t get enough fundamental data to score{" "}
-              {data.profile.ticker}. This happens for ETFs and funds (like VOO),
-              recent IPOs, or symbols that aren&apos;t covered by the current
-              (free-tier) data plan — not every ticker is included.
+              {data.profile.ticker}, so there&apos;s no verdict here — but the
+              company info we do have is below. This happens for ETFs and funds
+              (like VOO), recent IPOs, or symbols that aren&apos;t covered by the
+              current (free-tier) data plan.
             </p>
           </Card>
         )}
 
-        <div className="space-y-8">
-          {groups.map((g) => (
-            <MetricGroup
-              key={g.key}
-              group={g}
-              currency={currency}
-              contexts={contexts}
-            />
-          ))}
-        </div>
+        {/* Empty metric cards add nothing, so only show them when scorable. */}
+        {hasUsableData && (
+          <div className="space-y-8">
+            {groups.map((g) => (
+              <MetricGroup
+                key={g.key}
+                group={g}
+                currency={currency}
+                contexts={contexts}
+              />
+            ))}
+          </div>
+        )}
 
         {history && <ValuationTrend points={history} />}
 
@@ -183,6 +188,9 @@ export default async function StockPage({ params }: Params) {
         )}
 
         {hasUsableData && <ScoreBreakdown result={valuation} />}
+
+        {/* Always show what we can about the company (works even unscored). */}
+        <CompanyAbout profile={data.profile} />
 
         {data.source === "demo" && (
           <p className="text-center text-xs text-muted">

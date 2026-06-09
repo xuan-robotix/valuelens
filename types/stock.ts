@@ -18,6 +18,19 @@ export interface CompanyProfile {
   changePercent: number | null;
   marketCap: number | null;
   currency: string;
+
+  // Extra profile fields — shown in the "About" section. Available whenever the
+  // profile endpoint works, even when full valuation ratios aren't. Optional so
+  // demo data needn't supply them.
+  beta?: number | null;
+  range52w?: string | null;
+  avgVolume?: number | null;
+  lastDividend?: number | null;
+  ceo?: string | null;
+  employees?: number | null;
+  ipoDate?: string | null;
+  website?: string | null;
+  country?: string | null;
 }
 
 /**
