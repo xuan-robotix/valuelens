@@ -13,7 +13,8 @@ import type { StockData } from "@/types/stock";
 import { normalizeFmp } from "./normalize";
 import { getDemoTicker } from "./demoData";
 
-const FMP_BASE = "https://financialmodelingprep.com/api/v3";
+// FMP "stable" API (the legacy /api/v3 endpoints were retired for new accounts).
+const FMP_BASE = "https://financialmodelingprep.com/stable";
 
 export class TickerNotFoundError extends Error {
   constructor(ticker: string) {
@@ -30,8 +31,10 @@ export function sanitizeTicker(raw: string): string | null {
   return t;
 }
 
+// Fundamentals barely move intraday, and the free tier has a small daily quota,
+// so cache each upstream response for 6 hours.
 async function fetchJson(url: string): Promise<unknown> {
-  const res = await fetch(url, { next: { revalidate: 60 * 30 } }); // 30-min cache
+  const res = await fetch(url, { next: { revalidate: 60 * 60 * 6 } });
   if (!res.ok) throw new Error(`Upstream ${res.status}`);
   return res.json();
 }
@@ -44,23 +47,28 @@ async function fetchFromFmp(
   ticker: string,
   apiKey: string,
 ): Promise<StockData | null> {
-  const q = `apikey=${apiKey}`;
-  const [profileRaw, ratiosRaw, growthRaw] = await Promise.all([
-    fetchJson(`${FMP_BASE}/profile/${ticker}?${q}`),
-    fetchJson(`${FMP_BASE}/ratios-ttm/${ticker}?${q}`),
-    fetchJson(`${FMP_BASE}/financial-growth/${ticker}?period=annual&limit=1&${q}`),
+  const q = `symbol=${ticker}&apikey=${apiKey}`;
+  const [profileRaw, ratiosRaw, keyMetricsRaw, growthRaw] = await Promise.all([
+    fetchJson(`${FMP_BASE}/profile?${q}`),
+    fetchJson(`${FMP_BASE}/ratios-ttm?${q}`),
+    fetchJson(`${FMP_BASE}/key-metrics-ttm?${q}`),
+    fetchJson(`${FMP_BASE}/financial-growth?${q}&limit=1`),
   ]);
 
-  const profile = firstOf<Record<string, never>>(profileRaw);
-  if (!profile || Object.keys(profile).length === 0) return null; // unknown ticker
+  // Unknown ticker → empty array; rate-limit/error → { "Error Message": ... }.
+  const profile = firstOf<FmpProfile>(profileRaw);
+  if (!profile || !profile.symbol) return null;
 
   return normalizeFmp(
     ticker,
     profile,
     firstOf(ratiosRaw),
+    firstOf(keyMetricsRaw),
     firstOf(growthRaw),
   );
 }
+
+type FmpProfile = { symbol?: string };
 
 /**
  * Primary entry point. Returns normalized StockData or throws
