@@ -157,9 +157,10 @@ export default async function StockPage({ params }: Params) {
           <Card className="p-6">
             <h2 className="text-lg font-semibold">Valuation unavailable</h2>
             <p className="mt-2 text-sm text-muted">
-              We don&apos;t have enough fundamental data to score{" "}
-              {data.profile.ticker} right now. This often happens for ETFs,
-              recent IPOs, or companies that don&apos;t report standard ratios.
+              We couldn&apos;t get enough fundamental data to score{" "}
+              {data.profile.ticker}. This happens for ETFs and funds (like VOO),
+              recent IPOs, or symbols that aren&apos;t covered by the current
+              (free-tier) data plan — not every ticker is included.
             </p>
           </Card>
         )}
